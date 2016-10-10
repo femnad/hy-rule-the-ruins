@@ -3,6 +3,7 @@
 (import [os.path [expanduser]])
 (import [time [sleep]])
 
+(import [curses])
 (import [requests])
 (import [requests.auth [HTTPBasicAuth]])
 
@@ -62,24 +63,26 @@
                                  "private" recipient content)]
     (authenticated-post credentials messages-endpoint message-payload)))
 
-(defn process-messages [messages &optional last-message-id]
+(defn process-messages [window messages &optional last-message-id]
   (if (empty? messages)
     (if (is None last-message-id)
       -1
       last-message-id)
     (let [[message-id formatted-message] (format-message (first messages))]
-      (print formatted-message)
-      (process-messages (list (rest messages)) message-id))))
+      (.addstr window formatted-message)
+      (.addstr window "\n")
+      (.refresh window)
+      (process-messages window (list (rest messages)) message-id))))
 
-(defn pre-message-loop [credentials]
+(defn pre-message-loop [window credentials]
   (let [[queue-id last-event-id] (register-message-queue credentials)]
-    (message-loop credentials queue-id last-event-id)))
+    (message-loop window credentials queue-id last-event-id)))
 
-(defn message-loop [credentials queue-id last-event-id]
+(defn message-loop [window credentials queue-id last-event-id]
   (let [new-last-message-id
-        (process-messages (get-new-messages credentials queue-id last-event-id))]
+        (process-messages window (get-new-messages credentials queue-id last-event-id))]
     (sleep 1)
-    (message-loop credentials queue-id new-last-message-id)))
+    (message-loop window credentials queue-id new-last-message-id)))
 
 (defn get-credentials [file-name]
   (with [f (open (expanduser file-name))]
@@ -94,5 +97,9 @@
     recipient))
 
 (defmain [&rest args]
-  (let [credentials (get-credentials "~/.hrtrrc")]
-    (pre-message-loop credentials)))
+  (let [credentials (get-credentials "~/.hrtrrc")
+        window (.initscr curses)]
+    (do
+     (.clear window)
+     (.refresh window)
+     (pre-message-loop window credentials))))
