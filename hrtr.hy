@@ -31,9 +31,9 @@
 (defn register-message-queue [credentials]
   (let [queue-endpoint (get-queue-endpoint credentials)
         response (authenticated-post credentials queue-endpoint
-                                     {"event_types" "[\"message\"]"})
-        json-response (.json response)]
-    (list (map (fn [key] (get json-response key)) ["queue_id" "last_event_id"]))))
+                                     {"event_types" "[\"message\"]"})]
+    (let [json-response (.json response)]
+      (list (map (fn [key] (get json-response key)) ["queue_id" "last_event_id"])))))
 
 (defn get-events-from-queue [credentials queue-id last-event-id]
   (let [events-endpoint (get-endpoint credentials "events")
@@ -63,16 +63,9 @@
                                  "private" recipient content)]
     (authenticated-post credentials messages-endpoint message-payload)))
 
-(defn process-messages [window messages &optional last-message-id]
-  (if (empty? messages)
-    (if (is None last-message-id)
-      -1
-      last-message-id)
-    (let [[message-id formatted-message] (format-message (first messages))]
-      (.addstr window formatted-message)
-      (.addstr window "\n")
-      (.refresh window)
-      (process-messages window (list (rest messages)) message-id))))
+(defn process-messages [messages]
+  (for [message messages]
+    (yield (format-message message))))
 
 (defn pre-message-loop [window credentials]
   (let [[queue-id last-event-id] (register-message-queue credentials)]
@@ -86,7 +79,7 @@
 
 (defn get-credentials [file-name]
   (with [f (open (expanduser file-name))]
-        (let [creds-json (json.loads (.read f))
+        (let [creds-json (.loads json (.read f))
               [api-key email server] (map (fn [k] (get creds-json k))
                                           ["api-key" "email" "server"])]
           {"api-key" api-key "email" email "server" server})))
@@ -103,3 +96,9 @@
      (.clear window)
      (.refresh window)
      (pre-message-loop window credentials))))
+
+(defn gen-new-messages [creds q-id ev-id]
+  (while true
+    (for [message (get-new-messages creds q-id ev-id)]
+      (yield (process-messages message))
+    (sleep 1))))
